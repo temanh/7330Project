@@ -53,6 +53,7 @@ def connect_to_db():
         return None
 
 # Insert degree information into the database
+# This actually works as is
 def insert_degree(name, level, description):
     connection = connect_to_db()
     if connection:
