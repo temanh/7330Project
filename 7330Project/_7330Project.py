@@ -38,12 +38,13 @@ def query_data():
         print("Option not implemented yet.")
 
 # Database connection
+# Input your own connection settings
 def connect_to_db():
     try:
         connection = mysql.connector.connect(
-            host='localhost',
-            user='user1',
-            password='123',
+            host='',
+            user='',
+            password='',
             database='ProgramEvaluation'
         )
         if connection.is_connected():
