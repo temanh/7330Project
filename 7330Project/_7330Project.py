@@ -12,9 +12,9 @@ def connect_to_db():
     """Establish a connection to the database."""
     try:
         connection = mysql.connector.connect(
-            host="",
-            user="",
-            password="",
+            host="localhost",
+            user="user1",
+            password="123",
             database="ProgramEvaluation"
         )
         return connection
@@ -254,12 +254,21 @@ def execute_query(query, data=None, fetch=False):
 
 # Get all degrees
 def get_all_degrees():
-    query = "SELECT * FROM Degrees"
+    query = "SELECT DegreeID, Name, Level, Description FROM Degrees;"
     results = execute_query(query, fetch=True)
-    print("Degrees:")
-    for row in results:
-        print(row)
+    if results:
+        print("\nAvailable Degrees:")
+        degree_choices = []
+        for row in results:
+            degree_id, name, level, description = row
+            print(f"Degree ID: {degree_id}, Name: {name}, Level: {level}, Description: {description}")
+            degree_choices.append(degree_id)
+        return degree_choices
+    else:
+        print("No degrees found.")
+        return None
 
+        
 # Get all courses
 def get_all_courses():
     connection = connect_to_db()
@@ -276,17 +285,25 @@ def get_all_courses():
             connection.close()
     return []
 
-# Get a single degree by DegreeID
-def get_degree_by_id():
-    degree_id = int(input("Enter the Degree ID to query: "))
-    query = "SELECT * FROM Degrees WHERE DegreeID = %s"
+# Get courses by degree id 
+def list_courses_by_degree(degree_id):
+    query = """
+        SELECT c.CourseID, c.CourseName, dc.IsCore
+        FROM Courses c
+        JOIN Degree_Courses dc ON c.CourseID = dc.CourseID
+        WHERE dc.DegreeID = %s;
+    """
+    # Pass parameters directly as a tuple if `params` is not a valid keyword
     results = execute_query(query, (degree_id,), fetch=True)
     if results:
-        print("Degree Details:")
+        print(f"\nCourses for Degree ID {degree_id}:")
         for row in results:
-            print(row)
+            course_id, course_name, is_core = row
+            core_status = "Core" if is_core else "Elective"
+            print(f"Course ID: {course_id}, Name: {course_name}, Type: {core_status}")
     else:
-        print("No degree found with the given ID.")
+        print(f"No courses found for Degree ID {degree_id}.")
+
     
 # Get all goals
 def get_all_goals():
@@ -294,15 +311,24 @@ def get_all_goals():
     if connection:
         try:
             cursor = connection.cursor()
-            cursor.execute("SELECT GoalID, Description FROM Goals;")
-            return cursor.fetchall()  
+            cursor.execute("SELECT GoalID, DegreeID, Description FROM Goals;")
+            results = cursor.fetchall()
+
+            # Check if results are not empty
+            if results:
+                print("\nAvailable Goals:")
+                for goal_id, degree_id, description in results:
+                    print(f"Goal ID: {goal_id}, Degree ID: {degree_id}, Description: {description}")
+            else:
+                print("No goals found.")
+                
         except mysql.connector.Error as e:
             print(f"Error retrieving goals: {e}")
-            return []
         finally:
             cursor.close()
             connection.close()
-    return []
+    else:
+        print("Connection to the database failed.")
 
 # Get all instructors
 def get_all_instructors():
@@ -365,6 +391,29 @@ def enter_course_section_for_semester(course_id, semester, year):
             connection.close()
     else:
         print("Database connection failed.")
+        
+
+
+
+def list_sections_by_year_range(start_year, end_year):
+    """
+    List all sections offered in the specified year range (inclusive).
+    """
+    query = """
+        SELECT SectionID, CourseID, Year, Semester
+        FROM Sections
+        WHERE Year BETWEEN {start_year} AND {end_year}
+        ORDER BY Year ASC, Semester ASC;
+    """.format(start_year=start_year, end_year=end_year)
+
+    results = execute_query(query, fetch=True)  # No params argument needed now
+    if results:
+        print(f"\nSections offered between {start_year} and {end_year}:")
+        for row in results:
+            section_id, course_id, year, semester = row
+            print(f"Section ID: {section_id}, Course ID: {course_id}, Year: {year}, Semester: {semester}")
+    else:
+        print(f"No sections found between {start_year} and {end_year}.")
         
 
 def enter_evaluations(semester, instructor_id):
@@ -507,7 +556,7 @@ def main_menu():
         print("6.  Add a course")
         print("7.  Link course with goal")
         print("8.  View all courses")
-        print("9.  View a course by number")
+        print("9.  List courses by degree")
         print("10. Update course name")
         print("11. Delete a course")
         print("12. Enter course/section for a given semester")  
@@ -516,18 +565,20 @@ def main_menu():
         print("\n--- Instructor and Section Operations ---")
         print("13. Add an instructor")
         print("14. Add a section")
+        print("15. List sections")
 
         # Group: Goals
         print("\n--- Goal Operations ---")
-        print("15. Add a goal")
+        print("16. Add a goal")
+        print("17. List goals")
        
         # Group: Evaluations
         print("\n--- Enter Evaluations ---")
-        print("16. Enter evaluations")  
+        print("18. Enter evaluations")  
 
         # Exit
         print("\n")
-        print("17. Exit")
+        print("19. Exit")
         choice = input("Choose an operation (1-17): ").strip()
 
         if choice == "1":
@@ -566,8 +617,18 @@ def main_menu():
         elif choice == "8":
             view_all_courses()
         elif choice == "9":
-            course_number = input("Enter the course number: ").strip()
-            view_course_by_number(course_number)
+            degree_choices = get_all_degrees()
+            if degree_choices:
+                while True:
+                    try:
+                        degree_id = input("\nEnter Degree ID to list courses: ").strip()
+                        if int(degree_id) in degree_choices:
+                            list_courses_by_degree(degree_id)
+                            break
+                        else:
+                            print("Invalid Degree ID. Please select from the available options.")
+                    except ValueError:
+                        print("Please enter a valid numeric Degree ID.")
         elif choice == "10":
             course_id = input("Enter the CourseID to update: ").strip()
             new_course_name = input("Enter the new name for the course: ").strip()
@@ -576,8 +637,7 @@ def main_menu():
             course_id = input("Enter the CourseID to delete: ").strip()
             delete_course(course_id)
         elif choice == "12":
-             # Display available courses
-            courses = get_all_courses()  # Assuming you have a function to get courses
+            courses = get_all_courses()
             if not courses:
                 print("No courses available to assign to a section.")
                 continue  # Go back to menu
@@ -600,8 +660,6 @@ def main_menu():
                     break
                 else:
                     print("Invalid input. Please enter a valid four-digit year.")
-
-            # Call the function with gathered parameters
             enter_course_section_for_semester(course_id, semester, year)
             
         elif choice == "13":
@@ -609,9 +667,7 @@ def main_menu():
             instructor_name = input("Enter instructor name: ").strip()
             add_instructor(instructor_id, instructor_name)
         elif choice == "14":
-             # Get all courses and display them
             courses = get_all_courses()
-
             if not courses:
                 print("No courses available to select.")
             else:
@@ -662,13 +718,28 @@ def main_menu():
 
                 # Call the add_section method with the gathered parameters
                 add_section(course_id, year, semester, section_id, enrolled_students, instructor_id)
+                
         elif choice == "15":
+            print("\nSpecify the year range:")
+            try:
+                start_year = int(input("Enter the start year: ").strip())
+                end_year = int(input("Enter the end year): ").strip())
+
+                if start_year > end_year:
+                    print("Start year must not be greater than the end year.")
+                else:
+                    list_sections_by_year_range(start_year, end_year)
+            except ValueError:
+                print("Invalid year entered. Please enter numeric values for the year range.")
+        elif choice == "16":
             goal_id = input("Enter the goal ID: ").strip()
             degree_id = input("Enter the degree ID: ").strip()
             code = input("Enter code: ").strip()
             description = input("Enter description: ").strip()
             add_goal(goal_id, degree_id, code, description)
-        elif choice == "16":
+        elif choice == "17":
+            get_all_goals()
+        elif choice == "18":
               semester = input("Enter the Semester (e.g., Fall, Spring, Summer): ").strip()
               # Get all instructors and display them
               instructors = get_all_instructors()
@@ -681,10 +752,13 @@ def main_menu():
                         print(f"Instructor ID: {instructor[0]}, Instructor Name: {instructor[1]}")
               instructor_id = input("Enter the Instructor ID: ").strip()
               enter_evaluations(semester, instructor_id)  # Pass the parameters
-        elif choice == "17":
+        elif choice == "19":
             print("Exiting the system.")
         else:
             print("Invalid choice, please try again.")
+            
+        # Prompt to go back to the main menu
+        input("\nPress Enter to return to the main menu...")
 
 # END Main loop
 
