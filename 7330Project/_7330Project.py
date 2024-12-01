@@ -12,9 +12,9 @@ def connect_to_db():
     """Establish a connection to the database."""
     try:
         connection = mysql.connector.connect(
-            host="localhost",
-            user="user1",
-            password="123",
+            host="",
+            user="",
+            password="",
             database="ProgramEvaluation"
         )
         return connection
@@ -108,13 +108,11 @@ def add_goal(goal_id, degree_id, code, description):
         try:
             cursor = connection.cursor()
 
-            # SQL query for inserting a new goal
             query = """
                 INSERT INTO Goals (GoalID, DegreeID, Code, Description)
                 VALUES (%s, %s, %s, %s)
             """
 
-            # Execute the query with provided inputs
             cursor.execute(query, (goal_id, degree_id, code, description))
             connection.commit()
             print(f"Goal with ID '{goal_id}' added successfully under Degree ID '{degree_id}'.")
@@ -126,24 +124,23 @@ def add_goal(goal_id, degree_id, code, description):
 
 # Link/Associate a course with a goal
 def link_course_with_goal(course_id, goal_id):
-    connection = connect_to_db()  # Establish the connection
+    connection = connect_to_db()
     if connection:
         try:
             cursor = connection.cursor()
 
-            # Associate course with goal using goal_id directly
             cursor.execute("""
                 INSERT INTO CourseGoal(CourseID, GoalID)
                 VALUES(%s, %s);
             """, (course_id, goal_id))
 
-            connection.commit()  # Commit the changes
+            connection.commit()
             print(f'Successfully associated CourseID {course_id} with GoalID {goal_id}.')
         except mysql.connector.Error as err:
             print(f'Course-Goal Association Invalid: {course_id}, GoalID: {goal_id}. Error: {err}')
         finally:
-            cursor.close()  # Ensure the cursor is closed
-            connection.close()  # Ensure the connection is closed
+            cursor.close()  
+            connection.close()
 
 
 # Add a course for a given semester
@@ -270,7 +267,7 @@ def get_all_courses():
         try:
             cursor = connection.cursor()
             cursor.execute("SELECT CourseID, CourseName FROM Courses;")
-            return cursor.fetchall()  # Fetch all CourseID and CourseName pairs
+            return cursor.fetchall() 
         except mysql.connector.Error as e:
             print(f"Error retrieving courses: {e}")
             return []
@@ -298,7 +295,7 @@ def get_all_goals():
         try:
             cursor = connection.cursor()
             cursor.execute("SELECT GoalID, Description FROM Goals;")
-            return cursor.fetchall()  # Fetch all GoalID and GoalName pairs
+            return cursor.fetchall()  
         except mysql.connector.Error as e:
             print(f"Error retrieving goals: {e}")
             return []
@@ -306,6 +303,23 @@ def get_all_goals():
             cursor.close()
             connection.close()
     return []
+
+# Get all instructors
+def get_all_instructors():
+    connection = connect_to_db()
+    if connection:
+        try:
+            cursor = connection.cursor()
+            cursor.execute("SELECT InstructorID, Name FROM Instructors;") 
+            return cursor.fetchall()  
+        except mysql.connector.Error as e:
+            print(f"Error retrieving instructors: {e}")
+            return []
+        finally:
+            cursor.close()
+            connection.close()
+    return []
+
 
 # Get a single course by CourseNumber
 def get_course_id(course_name):
@@ -334,10 +348,10 @@ def enter_course_section_for_semester(course_id, semester, year):
         try:
             cursor = connection.cursor()
 
-            # Insert into CourseSections
+            # Insert into Sections
             try:
                 cursor.execute(""" 
-                    INSERT INTO CourseSections (CourseID, Semester, Year)
+                    INSERT INTO Sections (CourseID, Semester, Year)
                     VALUES (%s, %s, %s);
                 """, (course_id, semester, year))
                 connection.commit()
@@ -352,6 +366,116 @@ def enter_course_section_for_semester(course_id, semester, year):
     else:
         print("Database connection failed.")
         
+
+def enter_evaluations(semester, instructor_id):
+    connection = connect_to_db()
+    if connection:
+        try:
+            cursor = connection.cursor()
+
+            # List sections taught by the instructor for the given semester
+            cursor.execute(""" 
+                SELECT SectionID, CourseID, Year 
+                FROM Sections 
+                WHERE InstructorID = %s AND Semester = %s;
+            """, (instructor_id, semester))
+            sections = cursor.fetchall()
+
+            if not sections:
+                print("No sections found for this instructor in the given semester.")
+                return
+            
+            print("\nSections taught by the instructor:")
+            for section in sections:
+                print(f"Section ID: {section[0]}, Course ID: {section[1]}, Year: {section[2]}")
+
+            # Fetch and display available Goal IDs and their descriptions
+            cursor.execute("SELECT GoalID, Description FROM Goals;")
+            goals = cursor.fetchall()
+
+            print("\nAvailable Goals:")
+            for goal in goals:
+                print(f"Goal ID: {goal[0]}, Description: {goal[1]}")
+
+            # Check existing evaluations
+            evaluations = []
+            for section in sections:
+                cursor.execute(""" 
+                    SELECT CourseID, EvaluationMethod, GoalID 
+                    FROM Evaluations 
+                    WHERE SectionID = %s;
+                """, (section[0],))
+                evals = cursor.fetchall()
+                evaluations.extend(evals)
+
+            # Display existing evaluations
+            if evaluations:
+                print("\nExisting Evaluations:")
+                for eval in evaluations:
+                    print(f"Course ID: {eval[0]}, Evaluation Method: {eval[1]}, Goal ID: {eval[2]}")
+            else:
+                print("No evaluations found for these sections.")
+
+            # Option to enter new data or change existing data
+            action = input("\nWould you like to (A)dd new evaluations, (C)hange existing evaluations, or (N)o changes? ").strip().lower()
+            if action == 'a':
+                # Add new evaluations logic
+                for section in sections:
+                    goal_id = input(f"Enter Goal ID for Section ID {section[0]}: ").strip()
+                    evaluation_method = input("Enter Evaluation Method: ").strip()
+                    grade_a = input("Enter Grade A (default 0): ").strip() or 0
+                    grade_b = input("Enter Grade B (default 0): ").strip() or 0
+                    grade_c = input("Enter Grade C (default 0): ").strip() or 0
+                    grade_f = input("Enter Grade F (default 0): ").strip() or 0
+                    improvement_notes = input("Enter Improvement Notes: ").strip()
+
+                    # Insert new evaluation
+                    cursor.execute(""" 
+                        INSERT INTO Evaluations (CourseID, Year, Semester, SectionID, GoalID, EvaluationMethod, GradeA, GradeB, GradeC, GradeF, ImprovementNotes) 
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s);
+                    """, (section[1], section[2], semester, section[0], goal_id, evaluation_method, grade_a, grade_b, grade_c, grade_f, improvement_notes))
+                    print(f"Evaluation added for Section ID {section[0]}.")
+                
+                connection.commit()  # Commit the transaction after all inserts
+            elif action == 'c':
+                # Change existing evaluations logic
+                for eval in evaluations:
+                    new_data = input(f"Enter new evaluation data for Evaluation ID {eval[0]} (current: {eval[1]}): ").strip()
+                    cursor.execute("""
+                        UPDATE Evaluations 
+                        SET EvaluationMethod = %s 
+                        WHERE EvaluationID = %s;
+                    """, (new_data, eval[0]))
+                    print(f"Evaluation ID {eval[0]} updated.")
+                connection.commit()
+            elif action == 'n':
+                print("No changes made.")
+            else:
+                print("Invalid action. Please select A, C, or N.")
+
+            # Duplicate evaluation option
+            duplicate = input("\nWould you like to duplicate an evaluation to another degree? (Y/N): ").strip().lower()
+            if duplicate == 'y':
+                # Logic for duplicating evaluations to other degrees
+                degree_id = input("Enter the degree ID to duplicate evaluations to: ").strip()
+                for eval in evaluations:
+                    cursor.execute("""
+                        INSERT INTO Evaluations (SectionID, EvaluationMethod, GoalID, DegreeID) 
+                        VALUES (%s, %s, %s, %s);
+                    """, (eval[0], eval[1], eval[2], degree_id))
+                    print(f"Evaluation duplicated for Degree ID {degree_id}.")
+
+                connection.commit()
+
+        except mysql.connector.Error as e:
+            print(f"Database operation failed: {e}")
+        finally:
+            cursor.close()
+            connection.close()
+    else:
+        print("Database connection failed.")
+        
+
 
 #### SPECIAL METHODS END
 
@@ -386,7 +510,7 @@ def main_menu():
         print("9.  View a course by number")
         print("10. Update course name")
         print("11. Delete a course")
-        print("12. Enter course/section for a given semester")  # New option
+        print("12. Enter course/section for a given semester")  
 
         # Group: Instructor and Section Operations
         print("\n--- Instructor and Section Operations ---")
@@ -396,11 +520,15 @@ def main_menu():
         # Group: Goals
         print("\n--- Goal Operations ---")
         print("15. Add a goal")
+       
+        # Group: Evaluations
+        print("\n--- Enter Evaluations ---")
+        print("16. Enter evaluations")  
 
         # Exit
         print("\n")
-        print("16. Exit")
-        choice = input("Choose an operation (1-16): ").strip()
+        print("17. Exit")
+        choice = input("Choose an operation (1-17): ").strip()
 
         if choice == "1":
             name = input("Enter the name of the degree: ").strip()
@@ -481,7 +609,59 @@ def main_menu():
             instructor_name = input("Enter instructor name: ").strip()
             add_instructor(instructor_id, instructor_name)
         elif choice == "14":
-            add_section()
+             # Get all courses and display them
+            courses = get_all_courses()
+
+            if not courses:
+                print("No courses available to select.")
+            else:
+                print("Available Courses:")
+                for course in courses:
+                    print(f"Course ID: {course[0]}, Course Name: {course[1]}")
+
+                # Prompt user for input parameters
+                course_id = input("Enter the Course ID from the above list: ").strip()
+
+                # Ensure that the course ID is valid
+                valid_course_ids = [course[0] for course in courses]
+                while course_id not in valid_course_ids:
+                    print("Invalid Course ID. Please select a valid Course ID from the list.")
+                    course_id = input("Enter the Course ID from the above list: ").strip()
+
+                year = input("Enter the Year (e.g., 2024): ").strip()
+
+                # Ensure the year is a four-digit number
+                while not (year.isdigit() and len(year) == 4):
+                    print("Invalid input. Please enter a valid four-digit year.")
+                    year = input("Enter the Year (e.g., 2024): ").strip()
+
+                semester = input("Enter the Semester (e.g., Fall, Spring, Summer): ").strip()
+                section_id = input("Enter the Section ID: ").strip()
+
+                # Prompt for the number of enrolled students (default is 0)
+                enrolled_students_input = input("Enter the number of enrolled students (default is 0): ").strip()
+                enrolled_students = int(enrolled_students_input) if enrolled_students_input else 0
+
+                # Get all instructors and display them
+                instructors = get_all_instructors()
+
+                if not instructors:
+                    print("No instructors available to select.")
+                    instructor_id = None  # No instructor option
+                else:
+                    print("Available Instructors:")
+                    for instructor in instructors:
+                        print(f"Instructor ID: {instructor[0]}, Instructor Name: {instructor[1]}")
+
+                    instructor_id = input("Enter the Instructor ID from the above list (leave blank if no instructor): ").strip() or None
+            
+                    # Ensure that the instructor ID is valid
+                    if instructor_id and instructor_id not in [str(instructor[0]) for instructor in instructors]:
+                        print("Invalid Instructor ID. Setting instructor to None.")
+                        instructor_id = None
+
+                # Call the add_section method with the gathered parameters
+                add_section(course_id, year, semester, section_id, enrolled_students, instructor_id)
         elif choice == "15":
             goal_id = input("Enter the goal ID: ").strip()
             degree_id = input("Enter the degree ID: ").strip()
@@ -489,6 +669,19 @@ def main_menu():
             description = input("Enter description: ").strip()
             add_goal(goal_id, degree_id, code, description)
         elif choice == "16":
+              semester = input("Enter the Semester (e.g., Fall, Spring, Summer): ").strip()
+              # Get all instructors and display them
+              instructors = get_all_instructors()
+              if not instructors:
+                    print("No instructors available to select.")
+                    instructor_id = None  # No instructor option
+              else:
+                    print("Available Instructors:")
+                    for instructor in instructors:
+                        print(f"Instructor ID: {instructor[0]}, Instructor Name: {instructor[1]}")
+              instructor_id = input("Enter the Instructor ID: ").strip()
+              enter_evaluations(semester, instructor_id)  # Pass the parameters
+        elif choice == "17":
             print("Exiting the system.")
         else:
             print("Invalid choice, please try again.")
