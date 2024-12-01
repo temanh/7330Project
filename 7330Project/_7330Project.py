@@ -12,9 +12,9 @@ def connect_to_db():
     """Establish a connection to the database."""
     try:
         connection = mysql.connector.connect(
-            host="localhost",
-            user="user1",
-            password="123",
+            host="",
+            user="",
+            password="",
             database="ProgramEvaluation"
         )
         return connection
