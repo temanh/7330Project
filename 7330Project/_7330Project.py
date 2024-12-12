@@ -26,9 +26,6 @@ def connect_to_db():
 
 
 
-
-
-
 ##### ADD METHODS
 
 # Add Degree Method
@@ -164,20 +161,35 @@ def add_offered_course(cursor, course_id, semester_name, year):
     except mysql.connector.Error as err:
         print(f'Offered Course Input Invalid: {course_id}, {semester_name}, {year}')
     
-def update_course_name(cursor, course_id, new_name):
-    try:
-        # Update the course name
-        cursor.execute("""
-            UPDATE Course
-            SET Name = %s
-            WHERE CourseID = %s;
-        """, (new_name, course_id))
-        if cursor.rowcount == 0:
-            print(f'Course Not Found: {course_id}')
-        else:
-            print(f'Course Updated: {course_id} -> {new_name}')
-    except mysql.connector.Error as err:
-        print(f'Course Update Failed: {course_id}, {new_name}')
+def update_course_name(course_id, new_name):
+    """
+    Update the name of a course in the database based on its CourseID.
+    """
+    connection = connect_to_db()
+    
+    if connection:
+        try:
+            cursor = connection.cursor()
+
+            # Update the course name
+            cursor.execute("""
+                UPDATE Courses
+                SET CourseName = %s
+                WHERE CourseID = %s;
+            """, (new_name, course_id))
+
+            if cursor.rowcount == 0:
+                print(f"Course Not Found: {course_id}")
+            else:
+                connection.commit()  # Commit the transaction
+                print(f"Course Updated: {course_id} -> {new_name}")
+        except Error as err:
+            print(f"Course Update Failed: {course_id}, {new_name}. Error: {err}")
+        finally:
+            cursor.close()
+            connection.close()
+    else:
+        print("Unable to connect to the database.")
         
 
 
@@ -345,6 +357,30 @@ def get_all_instructors():
             cursor.close()
             connection.close()
     return []
+
+def view_all_courses():
+    """
+    Fetch and return all courses with their CourseID and CourseName.
+    """
+    connection = connect_to_db()
+    courses = []  # Initialize list to store course records
+
+    if connection:
+        try:
+            cursor = connection.cursor()
+            query = "SELECT CourseID, CourseName FROM Courses"  # Query to fetch all courses
+            cursor.execute(query)
+            courses = cursor.fetchall()  # Fetch all rows
+        except Error as e:
+            print(f"Error retrieving courses: {e}")
+        finally:
+            cursor.close()
+            connection.close()
+    else:
+        print("Unable to connect to the database.")
+
+    return courses  # Return the list of courses
+
 
 
 # Get a single course by CourseNumber
@@ -526,6 +562,44 @@ def enter_evaluations(semester, instructor_id):
         
 
 
+def link_degree_with_course(course_id, course_name):
+    """
+    Link a course to a degree in the database based on course ID and course name.
+    """
+    connection = connect_to_db()
+    
+    if connection:
+        try:
+            cursor = connection.cursor()
+
+            # Check if the course exists
+            check_query = "SELECT CourseID FROM Courses WHERE CourseID = %s AND CourseName = %s"
+            cursor.execute(check_query, (course_id, course_name))
+            course_exists = cursor.fetchone()
+
+            if course_exists:
+                # Link the course to a degree 
+                link_query = """
+                INSERT INTO degree_courses (DegreeID, CourseID, IsCore)
+                VALUES (%s, %s, 1)
+                """
+                degree_id = input("Enter degree ID to link with this course: ").strip()
+                cursor.execute(link_query, (degree_id, course_id))
+                connection.commit()  # Commit the transaction
+                print(f"Successfully linked course {course_name} (ID: {course_id}) to degree ID {degree_id}.")
+            else:
+                print("The specified course does not exist. Please check the Course ID and Course Name.")
+        
+        except Error as e:
+            print(f"Error linking course with degree: {e}")
+        finally:
+            cursor.close()
+            connection.close()
+    else:
+        print("Unable to connect to the database.")
+        
+
+
 #### SPECIAL METHODS END
 
 
@@ -579,7 +653,7 @@ def main_menu():
         # Exit
         print("\n")
         print("19. Exit")
-        choice = input("Choose an operation (1-17): ").strip()
+        choice = input("Choose an operation (1-19): ").strip()
 
         if choice == "1":
             name = input("Enter the name of the degree: ").strip()
@@ -590,17 +664,44 @@ def main_menu():
             else:
                 print("All fields are required.")
         elif choice == "2":
-            course_id = input("Enter course ID: ").strip()
-            course_name = input("Enter course name: ").strip()
-            if course_id and course_name:
-                link_degree_with_course(course_id, course_name)
+              # Preview all courses
+            courses = view_all_courses()  # Fetch all courses
+    
+            if courses:
+                print("Available Courses:")
+                print(f"{'CourseID':<10} {'CourseName':<20}")  # Header
+                print("-" * 30)
+                for course_id, course_name in courses:
+                    print(f"{course_id:<10} {course_name:<20}")
+                print("-" * 30)
+
+                # Prompt user for CourseID and CourseName
+                course_id = input("Enter course ID: ").strip()
+                course_name = input("Enter course name: ").strip()
+
+                if course_id and course_name:
+                    link_degree_with_course(course_id, course_name)
+                else:
+                    print("All fields are required.")
             else:
-                print("All fields are required.")
+                print("No courses available to link.")
         elif choice == "3":
-            view_all_degrees()
+              valid_degrees = get_valid_degrees() 
+              print("Available Degrees:")
+
+              if valid_degrees:
+                    for degree_id, name in valid_degrees:
+                        print(f"ID: {degree_id}, Name: {name}")
+              else:
+                    print("No degrees found or unable to retrieve data.")
         elif choice == "4":
             degree_id = input("Enter degree ID: ").strip()
-            view_degree_by_id(degree_id)
+            result = view_degree_by_id(degree_id) 
+
+            if result:
+                print(f"Degree Details:\nID: {result[0]}, Name: {result[1]}")
+            else:
+                print("No degree found with the given ID.")
         elif choice == "5":
             delete_degree()
         elif choice == "6":
@@ -608,14 +709,23 @@ def main_menu():
             level = input("Enter the level of the course: ").strip()
             description = input("Enter a description for the course: ").strip()
             if course_name and level and description:
-                add_course(course_name, level, description)
+                add_course(course_name, level)
             else:
                 print("All fields are required.")
         elif choice == "7":
             course_id = input("Enter the CourseID to associate with a goal: ").strip()
             link_course_with_goal(course_id)
         elif choice == "8":
-            view_all_courses()
+            courses = view_all_courses()  # Call the function and store the results
+
+            if courses:
+                print("All Courses:")
+                print(f"{'CourseID':<10} {'CourseName':<20}")  # Header with column names
+                print("-" * 30)  # Divider line
+                for course_id, course_name in courses:
+                    print(f"{course_id:<10} {course_name:<20}")  # Display each course
+            else:
+                print("No courses found or unable to retrieve data.")
         elif choice == "9":
             degree_choices = get_all_degrees()
             if degree_choices:
@@ -630,9 +740,27 @@ def main_menu():
                     except ValueError:
                         print("Please enter a valid numeric Degree ID.")
         elif choice == "10":
-            course_id = input("Enter the CourseID to update: ").strip()
-            new_course_name = input("Enter the new name for the course: ").strip()
-            update_course_name(course_id, new_course_name)
+             # Preview all courses
+            courses = view_all_courses()  # Fetch all courses
+    
+            if courses:
+                print("Available Courses:")
+                print(f"{'CourseID':<10} {'CourseName':<20}")  # Header
+                print("-" * 30)
+                for course_id, course_name in courses:
+                    print(f"{course_id:<10} {course_name:<20}")
+                print("-" * 30)
+
+                # Ask user for the CourseID and new CourseName
+                course_id = input("Enter the CourseID to update: ").strip()
+                new_course_name = input("Enter the new name for the course: ").strip()
+        
+                if course_id and new_course_name:
+                    update_course_name(course_id, new_course_name)
+                else:
+                    print("Both Course ID and new Course Name are required.")
+            else:
+                print("No courses available to update.")
         elif choice == "11":
             course_id = input("Enter the CourseID to delete: ").strip()
             delete_course(course_id)
@@ -723,7 +851,7 @@ def main_menu():
             print("\nSpecify the year range:")
             try:
                 start_year = int(input("Enter the start year: ").strip())
-                end_year = int(input("Enter the end year): ").strip())
+                end_year = int(input("Enter the end year: ").strip())
 
                 if start_year > end_year:
                     print("Start year must not be greater than the end year.")
@@ -797,6 +925,27 @@ def get_valid_degrees():
             cursor.close()
             connection.close()
     return degrees
+
+
+def view_degree_by_id(degree_id):
+    connection = connect_to_db()
+    degree_details = None 
+
+    if connection:
+        try:
+            cursor = connection.cursor()
+            query = "SELECT DegreeID, Name FROM Degrees WHERE DegreeID = %s"
+            cursor.execute(query, (degree_id,)) 
+            degree_details = cursor.fetchone() 
+        except Error as e:
+            print(f"Error retrieving degree: {e}")
+        finally:
+            cursor.close()
+            connection.close()
+    else:
+        print("Unable to connect to the database.")
+
+    return degree_details  # Return the fetched result or None
 
 
 
